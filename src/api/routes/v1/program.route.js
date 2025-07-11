@@ -4,44 +4,234 @@ import { verifyJWT } from '../../middlewares/auth.middleware.js';
 import { checkRole } from '../../middlewares/role.middleware.js';
 
 const router = Router();
-
-// All program routes require a user to be logged in.
 router.use(verifyJWT);
 
-// --- Route for creating a new program or getting a list of programs ---
+/**
+ * @openapi
+ * /programs:
+ *   get:
+ *     tags: [Programs]
+ *     summary: Get all accessible programs
+ *     description: Retrieves programs based on user role. SuperAdmin sees all. Program Manager sees programs they manage. Facilitators/Trainees see programs they are enrolled in.
+ *     security: { bearerAuth: [] }
+ *     responses:
+ *       200: { description: 'List of programs.' }
+ *   post:
+ *     tags: [Programs]
+ *     summary: Create a new program
+ *     description: (Program Manager or SuperAdmin) Creates a new program. PM-created are 'Draft', SuperAdmin-created are 'PendingApproval'.
+ *     security: { bearerAuth: [] }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, description, startDate, endDate]
+ *             properties:
+ *               name: { type: string, example: 'New Web Dev Program' }
+ *               description: { type: string, example: 'A program for learning web development.' }
+ *               startDate: { type: string, format: 'date', example: '2025-10-01' }
+ *               endDate: { type: string, format: 'date', example: '2026-01-31' }
+ *     responses:
+ *       201: { description: 'Program created successfully.' }
+ */
 router.route('/')
-    .post(checkRole(['Program Manager', 'SuperAdmin']), programController.createProgram)
-    .get(programController.getAllPrograms);
+    .get(programController.getAllPrograms)
+    .post(checkRole(['Program Manager', 'SuperAdmin']), programController.createProgram);
 
-// --- Routes for a specific program, identified by its ID ---
+/**
+ * @openapi
+ * /programs/{id}:
+ *   get:
+ *     tags: [Programs]
+ *     summary: Get a single program by ID
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: 'Program details with populated users.' }
+ *       404: { description: 'Program not found.' }
+ *   put:
+ *     tags: [Programs]
+ *     summary: Update program details
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               description: { type: string }
+ *     responses:
+ *       200: { description: 'Program updated successfully.' }
+ *   delete:
+ *     tags: [Programs]
+ *     summary: Deactivate (soft delete) a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: 'Program deactivated successfully.' }
+ */
 router.route('/:id')
     .get(programController.getProgramById)
     .put(checkRole(['SuperAdmin', 'Program Manager']), programController.updateProgram)
-    .delete(checkRole(['SuperAdmin']), programController.deleteProgram); // This is a soft delete
+    .delete(checkRole(['SuperAdmin']), programController.deleteProgram);
 
-// --- Routes for changing the status and state of a program ---
-router.route('/:id/request-approval')
-    .patch(checkRole(['Program Manager']), programController.requestApproval);
+/**
+ * @openapi
+ * /programs/{id}/request-approval:
+ *   patch:
+ *     tags: [Programs]
+ *     summary: Request program approval
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: 'Program submitted for approval.' }
+ */
+router.route('/:id/request-approval').patch(checkRole(['Program Manager']), programController.requestApproval);
 
-router.route('/:id/approve')
-    .patch(checkRole(['SuperAdmin']), programController.approveProgram);
+/**
+ * @openapi
+ * /programs/{id}/approve:
+ *   patch:
+ *     tags: [Programs]
+ *     summary: Approve a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: 'Program approved.' }
+ */
+router.route('/:id/approve').patch(checkRole(['SuperAdmin']), programController.approveProgram);
 
-router.route('/:id/reject')
-    .patch(checkRole(['SuperAdmin']), programController.rejectProgram);
+/**
+ * @openapi
+ * /programs/{id}/reject:
+ *   patch:
+ *     tags: [Programs]
+ *     summary: Reject a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema: { properties: { reason: { type: string, example: 'Budget not approved.' } } }
+ *     responses:
+ *       200: { description: 'Program rejected.' }
+ */
+router.route('/:id/reject').patch(checkRole(['SuperAdmin']), programController.rejectProgram);
     
-// --- Routes for managing users within a program ---
-router.route('/:id/enroll-trainee')
-    .post(checkRole(['Program Manager']), programController.enrollTrainee);
+/**
+ * @openapi
+ * /programs/{id}/enroll-trainee:
+ *   post:
+ *     tags: [Programs]
+ *     summary: Enroll a trainee in a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema: { properties: { traineeId: { type: string } } }
+ *     responses:
+ *       200: { description: 'Trainee enrolled.' }
+ */
+router.route('/:id/enroll-trainee').post(checkRole(['Program Manager']), programController.enrollTrainee);
 
-router.route('/:id/enroll-facilitator')
-    .post(checkRole(['Program Manager']), programController.enrollFacilitator);
+/**
+ * @openapi
+ * /programs/{id}/enroll-facilitator:
+ *   post:
+ *     tags: [Programs]
+ *     summary: Enroll a facilitator in a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema: { properties: { facilitatorId: { type: string } } }
+ *     responses:
+ *       200: { description: 'Facilitator enrolled.' }
+ */
+router.route('/:id/enroll-facilitator').post(checkRole(['Program Manager']), programController.enrollFacilitator);
 
-// THIS IS THE ROUTE that was causing the error. It now correctly points to an exported function.
-router.route('/:id/manage-managers')
-    .patch(checkRole(['SuperAdmin']), programController.updateProgramManagers);
+/**
+ * @openapi
+ * /programs/{id}/manage-managers:
+ *   patch:
+ *     tags: [Programs]
+ *     summary: Add or remove a Program Manager (Multi-Manager Support)
+ *     description: (SuperAdmin only) Adds/removes a PM from the program's list of managers. This is the new, preferred endpoint for managing multiple managers.
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               managerId: { type: string }
+ *               action: { type: string, enum: [add, remove] }
+ *     responses:
+ *       200: { description: 'Manager list updated.' }
+ */
+router.route('/:id/manage-managers').patch(checkRole(['SuperAdmin']), programController.updateProgramManagers);
 
-// --- Reporting Route ---
-router.route('/:id/report/pdf')
-    .get(checkRole(['SuperAdmin', 'Program Manager']), programController.generateProgramReport);
+
+// --- THIS IS THE MISSING ROUTE, NOW ADDED BACK ---
+/**
+ * @openapi
+ * /programs/{id}/assign-manager:
+ *   patch:
+ *     tags: [Programs]
+ *     summary: Assign a single Program Manager (Legacy)
+ *     description: (SuperAdmin only) Assigns a single PM to a program. This overwrites the previous manager. It is recommended to use the `/manage-managers` endpoint instead.
+ *     deprecated: true
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               managerId: { type: string, description: "Send empty string to unassign" }
+ *     responses:
+ *       200: { description: 'Manager assignment updated.' }
+ */
+router.route('/:id/assign-manager').patch(checkRole(['SuperAdmin']), programController.assignManager);
+// --- END OF ADDED ROUTE ---
+
+
+/**
+ * @openapi
+ * /programs/{id}/report/pdf:
+ *   get:
+ *     tags: [Programs]
+ *     summary: Generate a PDF report for a program
+ *     security: { bearerAuth: [] }
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200:
+ *         description: A downloadable PDF file.
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.route('/:id/report/pdf').get(checkRole(['SuperAdmin', 'Program Manager']), programController.generateProgramReport);
 
 export default router;

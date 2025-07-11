@@ -21,15 +21,36 @@ const verifyManagerAccess = async (programId, managerId) => {
 
 const createProgram = asyncHandler(async (req, res) => {
     const { name, description, startDate, endDate } = req.body;
-    const managerId = req.user._id;
+    const creator = req.user;
+
+    let programStatus;
+    let managers = [];
+
+    // --- NEW LOGIC FOR SELF-APPROVAL ---
+    if (creator.role === 'SuperAdmin') {
+        // A program created by an admin is immediately ready for approval.
+        programStatus = 'PendingApproval';
+    } 
+    else if (creator.role === 'Program Manager') {
+        programStatus = 'Draft';
+        managers.push(creator._id);
+    }
+    // --- END NEW LOGIC ---
 
     const program = await Program.create({
-        name, description, startDate, endDate,
-        programManager: [managerId],
-        status: 'Draft',
+        name,
+        description,
+        startDate,
+        endDate,
+        programManagers: managers,
+        status: programStatus,
     });
+    
+    const message = creator.role === 'SuperAdmin' 
+        ? "Program created and is now pending your approval." 
+        : "Program created in Draft state.";
 
-    return res.status(201).json(new ApiResponse(201, program, "Program created in Draft state."));
+    return res.status(201).json(new ApiResponse(201, program, message));
 });
 
 const requestApproval = asyncHandler(async (req, res) => {
@@ -137,6 +158,45 @@ const generateProgramReport = asyncHandler(async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=program-report-${id}.pdf`);
     generateProgramReportPDF(program, attendanceRecords, res);
 });
+
+export const assignManager = asyncHandler(async (req, res) => {
+    const { id } = req.params; // program id
+    const { managerId } = req.body;
+
+    // Handle the case where the manager is being unassigned
+    if (!managerId || managerId === '') {
+        const program = await Program.findByIdAndUpdate(
+            id,
+            { $unset: { programManager: "" } }, // Use $unset to completely remove the field
+            { new: true }
+        );
+        if (!program) throw new ApiError(404, "Program not found.");
+        return res.status(200).json(new ApiResponse(200, program, "Program Manager unassigned successfully."));
+    }
+
+    // --- THE ROBUST FIX ---
+    // Validate that the user being assigned is actually a Program Manager, handling the space.
+    const manager = await User.findOne({ 
+        _id: managerId, 
+        role: 'Program Manager' // Use the exact string with the space
+    });
+    // --- END OF FIX ---
+
+    if (!manager) {
+        throw new ApiError(404, "The selected user is not a valid Program Manager.");
+    }
+
+    const program = await Program.findByIdAndUpdate(
+        id,
+        { programManager: managerId }, // Assign to the singular 'programManager' field
+        { new: true }
+    ).populate('programManager', 'name email'); // Populate the singular field
+    
+    if (!program) throw new ApiError(404, "Program not found.");
+
+    return res.status(200).json(new ApiResponse(200, program, "Program Manager assigned successfully."));
+});
+
 
 
 // --- THE EXPORT BLOCK ---

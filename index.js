@@ -4,7 +4,9 @@ import cors from 'cors';
 import connectDB from './src/config/db.js';
 import v1Router from './src/api/routes/v1/index.route.js';
 import { ApiError } from './src/utils/ApiError.js';
-
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsDoc from 'swagger-jsdoc';
+import swaggerOptions from './src/config/swagger.config.js';
 // Load environment variables
 dotenv.config();
 console.log('--- Environment Variable Check ---');
@@ -26,10 +28,12 @@ app.use(express.json({ limit: '16kb' }));
 app.use(express.urlencoded({ extended: true, limit: '16kb' }));
 app.use(express.static('public'));
 
-// --- API Routes ---
-app.use('/api/v1', v1Router);
 
-// --- Global Error Handler ---
+app.use('/api/v1', v1Router);
+const swaggerSpecs = swaggerJsDoc(swaggerOptions);
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+
 app.use((err, req, res, next) => {
     if (err instanceof ApiError) {
         return res.status(err.statusCode).json({

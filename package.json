@@ -27,6 +27,8 @@
     "nodemailer": "^7.0.5",
     "pdfkit": "^0.17.1",
     "qrcode": "^1.5.4",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
