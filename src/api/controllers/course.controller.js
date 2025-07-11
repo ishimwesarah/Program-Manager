@@ -12,6 +12,7 @@ const createCourse = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Course content document is required.");
     }
 
+    
    
     const contentUrl = req.file.path;
 
