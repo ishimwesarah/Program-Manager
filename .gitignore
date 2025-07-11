@@ -1,0 +1,14 @@
+# Dependencies
+/node_modules
+
+
+
+# Production
+/build
+
+# Logs
+logs
+*.log
+
+# Temporary files
+/public/temp
