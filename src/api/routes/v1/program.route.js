@@ -234,4 +234,55 @@ router.route('/:id/assign-manager').patch(checkRole(['SuperAdmin']), programCont
  */
 router.route('/:id/report/pdf').get(checkRole(['SuperAdmin', 'Program Manager']), programController.generateProgramReport);
 
+/**
+ * @openapi
+ * /programs/{id}/stats:
+ *   get:
+ *     tags: [Programs]
+ *     summary: Get statistics for a specific program
+ *     description: (SuperAdmin or Program Manager only) Retrieves key performance indicators (KPIs) for a single program, including overall attendance percentage, enrollment numbers, and more.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the program to get stats for.
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved program statistics.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalEnrolled:
+ *                   type: integer
+ *                   example: 45
+ *                 totalFacilitators:
+ *                   type: integer
+ *                   example: 3
+ *                 overallAttendancePercentage:
+ *                   type: number
+ *                   format: float
+ *                   example: 92.5
+ *                 totalPresentDays:
+ *                   type: integer
+ *                   example: 370
+ *                 totalExcusedDays:
+ *                   type: integer
+ *                   example: 10
+ *                 totalEligibleDays:
+ *                   type: integer
+ *                   example: 400
+ *       403:
+ *         description: Forbidden, user does not have permission to view stats for this program.
+ *       404:
+ *         description: Program not found.
+ */
+router.route('/:id/stats')
+    .get(checkRole(['SuperAdmin', 'Program Manager']), programController.getProgramStats);
+
 export default router;

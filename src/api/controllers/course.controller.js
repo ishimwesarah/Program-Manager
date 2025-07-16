@@ -44,4 +44,36 @@ const getCoursesForProgram = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, courses, "Courses fetched successfully."));
 });
 
+const verifyFacilitatorAccess = async (courseId, facilitatorId) => {
+    const course = await Course.findById(courseId);
+    if (!course) throw new ApiError(404, "Course not found.");
+    if (course.facilitator.toString() !== facilitatorId.toString()) {
+        throw new ApiError(403, "Forbidden: You are not the facilitator of this course.");
+    }
+    return course;
+};
+
+
+/**
+ * @desc    A Facilitator requests approval for a course they created.
+ * @route   PATCH /api/v1/courses/{courseId}/request-approval
+ * @access  Private (Facilitator)
+ */
+export const requestCourseApproval = asyncHandler(async (req, res) => {
+    const { courseId } = req.params;
+    
+    // First, verify the facilitator owns this course
+    await verifyFacilitatorAccess(courseId, req.user._id);
+
+    // Update the status from 'Draft' to 'PendingApproval'
+    const updatedCourse = await Course.findByIdAndUpdate(
+        courseId,
+        { status: 'PendingApproval' },
+        { new: true }
+    );
+
+    return res.status(200).json(new ApiResponse(200, updatedCourse, "Course submitted for approval."));
+});
+
+
 export { createCourse, approveCourse, getCoursesForProgram };

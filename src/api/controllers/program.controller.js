@@ -23,21 +23,17 @@ const createProgram = asyncHandler(async (req, res) => {
     const { name, description, startDate, endDate } = req.body;
     const creator = req.user;
 
-    let programStatus;
+    let programStatus = 'Draft';
     let managers = [];
 
-    // --- NEW LOGIC FOR SELF-APPROVAL ---
     if (creator.role === 'SuperAdmin') {
-        // A program created by an admin is immediately ready for approval.
         programStatus = 'PendingApproval';
-    } 
-    else if (creator.role === 'Program Manager') {
-        programStatus = 'Draft';
+    } else if (creator.role === 'Program Manager') {
         managers.push(creator._id);
     }
-    // --- END NEW LOGIC ---
 
-    const program = await Program.create({
+    // Step 1: Create the program document
+    const programDoc = await Program.create({
         name,
         description,
         startDate,
@@ -45,18 +41,30 @@ const createProgram = asyncHandler(async (req, res) => {
         programManagers: managers,
         status: programStatus,
     });
-    
+
+    // --- THIS IS THE FIX ---
+    // Step 2: Fetch the newly created program again, but this time populate the manager details.
+    const populatedProgram = await Program.findById(programDoc._id).populate('programManagers', 'name email');
+    // --- END OF FIX ---
+
     const message = creator.role === 'SuperAdmin' 
         ? "Program created and is now pending your approval." 
         : "Program created in Draft state.";
 
-    return res.status(201).json(new ApiResponse(201, program, message));
+    // Step 3: Return the populated program object
+    return res.status(201).json(new ApiResponse(201, populatedProgram, message));
 });
 
 const requestApproval = asyncHandler(async (req, res) => {
     const { id } = req.params;
     await verifyManagerAccess(id, req.user._id);
     const program = await Program.findByIdAndUpdate(id, { status: 'PendingApproval' }, { new: true });
+     await createLog({
+        user: req.user._id,
+        action: 'PROGRAM_SUBMITTED_FOR_APPROVAL',
+        details: `PM ${req.user.name} submitted program '${program.name}' for approval.`,
+        entity: { id: program._id, model: 'Program' }
+    });
     return res.status(200).json(new ApiResponse(200, program, "Program submitted for approval."));
 });
 
@@ -64,6 +72,12 @@ const approveProgram = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const program = await Program.findByIdAndUpdate(id, { status: 'Active', rejectionReason: null }, { new: true });
     if (!program) throw new ApiError(404, "Program not found");
+     await createLog({
+        user: req.user._id,
+        action: 'PROGRAM_APPROVED',
+        details: `SuperAdmin ${req.user.name} approved program '${program.name}'.`,
+        entity: { id: program._id, model: 'Program' }
+    });
     return res.status(200).json(new ApiResponse(200, program, "Program approved and is now Active."));
 });
 
@@ -73,6 +87,12 @@ const rejectProgram = asyncHandler(async (req, res) => {
     if (!reason) throw new ApiError(400, "A reason for rejection is required.");
     const program = await Program.findByIdAndUpdate(id, { status: 'Rejected', rejectionReason: reason }, { new: true });
     if (!program) throw new ApiError(404, "Program not found");
+     await createLog({
+        user: req.user._id,
+        action: 'PROGRAM_REJECTED',
+        details: `SuperAdmin ${req.user.name} rejected program '${program.name}'. Reason: ${reason}.`,
+        entity: { id: program._id, model: 'Program' }
+    });
     return res.status(200).json(new ApiResponse(200, program, "Program has been rejected."));
 });
 
@@ -131,6 +151,13 @@ const deleteProgram = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const program = await Program.findByIdAndUpdate(id, { isActive: false }, { new: true });
     if (!program) throw new ApiError(404, "Program not found");
+
+     await createLog({
+        user: req.user._id,
+        action: 'PROGRAM_DEACTIVATED',
+        details: `SuperAdmin ${req.user.name} deactivated program '${program.name}'.`,
+        entity: { id: program._id, model: 'Program' }
+    });
     return res.status(200).json(new ApiResponse(200, {}, "Program has been deactivated."));
 });
 
@@ -197,10 +224,68 @@ export const assignManager = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, program, "Program Manager assigned successfully."));
 });
 
+function getWeekdayCount(startDate, endDate) {
+    let count = 0;
+    const curDate = new Date(startDate.getTime());
+    while (curDate <= endDate) {
+        const dayOfWeek = curDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) count++; // 0=Sunday, 6=Saturday
+        curDate.setDate(curDate.getDate() + 1);
+    }
+    return count;
+}
 
 
-// --- THE EXPORT BLOCK ---
-// This block makes all the functions above available to be imported in other files.
+/**
+ * @desc    Get detailed statistics for a single program, including attendance percentage.
+ * @route   GET /api/v1/programs/{id}/stats
+ * @access  Private (SuperAdmin, ProgramManager)
+ */
+export const getProgramStats = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const program = await Program.findById(id);
+    if (!program) throw new ApiError(404, "Program not found.");
+
+    // --- ATTENDANCE CALCULATION ---
+    const attendanceRecords = await Attendance.find({ program: id });
+
+    const presentCount = attendanceRecords.filter(a => a.status === 'Present').length;
+    const excusedCount = attendanceRecords.filter(a => a.status === 'Excused').length;
+    
+    const today = new Date();
+    const programStartDate = new Date(program.startDate);
+    
+    // Only count days from the start of the program up to today.
+    const effectiveEndDate = today < new Date(program.endDate) ? today : new Date(program.endDate);
+    
+    let totalEligibleDays = 0;
+    if (programStartDate <= effectiveEndDate) {
+        totalEligibleDays = getWeekdayCount(programStartDate, effectiveEndDate);
+    }
+    
+    const totalRequiredDays = totalEligibleDays - excusedCount;
+    
+    let overallAttendancePercentage = 0;
+    if (totalRequiredDays > 0) {
+        overallAttendancePercentage = (presentCount / totalRequiredDays) * 100;
+    }
+    // --- END OF CALCULATION ---
+
+    const stats = {
+        totalEnrolled: program.trainees.length,
+        totalFacilitators: program.facilitators.length,
+        overallAttendancePercentage: Math.round(overallAttendancePercentage * 100) / 100, // Round to 2 decimal places
+        totalPresentDays: presentCount,
+        totalExcusedDays: excusedCount,
+        totalEligibleDays: totalEligibleDays,
+    };
+
+    return res.status(200).json(new ApiResponse(200, stats, "Program statistics fetched successfully."));
+});
+
+
+
 export {
     createProgram,
     requestApproval,

@@ -268,6 +268,12 @@ const getUserListByRole = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, filteredUsers, `User list for role '${role}' fetched successfully.`));
 });
 
+export const getArchivedUsers = asyncHandler(async (req, res) => {
+    // This query explicitly looks for users where isActive is false.
+    // It will bypass the default `pre('find')` middleware on the User model if you have one.
+    const users = await User.find({ isActive: false }).select('-password');
+    return res.status(200).json(new ApiResponse(200, users, "Archived users fetched successfully."));
+});
 
 
 export {

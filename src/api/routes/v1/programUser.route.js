@@ -95,5 +95,18 @@ router.route('/:userId').patch(programUserController.updateUserInProgram);
  *         description: Forbidden, if the requester is not the manager of this program.
  */
 router.route('/program/:programId/remove/:userId').patch(programUserController.removeUserFromProgram);
+/**
+ * @openapi
+ * /program-users/my-trainees:
+ *   get:
+ *     tags: [Program User Management (PM)]
+ *     summary: Get all trainees managed by the logged-in PM
+ *     description: (Program Manager only) Retrieves a detailed list of all trainees across all programs managed by the requester, including calculated performance stats.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: 'A list of trainees with their stats.' }
+ */
+router.route('/my-trainees').get(programUserController.getMyManagedTrainees);
 
 export default router;

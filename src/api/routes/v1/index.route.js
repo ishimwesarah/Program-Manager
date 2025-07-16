@@ -9,7 +9,7 @@ import quizRouter from './quiz.route.js';
 import certificateRouter from './certificate.route.js';
 import programUserRouter from './programUser.route.js'; 
 import dashboardRouter from './dashboard.route.js';
-
+import reportRouter from './report.route.js';
 const router = Router();
 
 const defaultRoutes = [
@@ -22,6 +22,7 @@ const defaultRoutes = [
     { path: '/quizzes', route: quizRouter },           
     { path: '/certificates', route: certificateRouter }, 
     { path: '/program-users', route: programUserRouter },
+    { path: '/reports', route: reportRouter },
      { path: '/dashboard', route: dashboardRouter },
 ];
 

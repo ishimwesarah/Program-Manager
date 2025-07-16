@@ -76,4 +76,25 @@ router.route('/:courseId/approve').patch(
  */
 router.route('/program/:programId').get(courseController.getCoursesForProgram);
 
+/**
+ * @openapi
+ * /courses/{courseId}/request-approval:
+ *   patch:
+ *     tags: [Courses]
+ *     summary: Request course approval
+ *     description: (Facilitator only) Submits a 'Draft' course for review, changing its status to 'PendingApproval'.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { name: courseId, in: path, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: 'Course submitted successfully.' }
+ *       403: { description: 'Forbidden, user is not the facilitator of this course.' }
+ *       404: { description: 'Course not found.' }
+ */
+router.route('/:courseId/request-approval').patch(
+    checkRole(['Facilitator']),
+    courseController.requestCourseApproval
+);
+
 export default router;

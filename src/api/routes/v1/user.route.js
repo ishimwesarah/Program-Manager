@@ -5,6 +5,9 @@ import { checkRole } from '../../middlewares/role.middleware.js';
 
 const router = Router();
 
+// --- SELF-SERVICE ROUTES for the logged-in user ---
+// These routes are checked first and are accessible to any authenticated user.
+
 /**
  * @openapi
  * /users/me:
@@ -15,10 +18,8 @@ const router = Router();
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: Successfully retrieved user profile.
- *       401:
- *         description: Unauthorized, token is missing or invalid.
+ *       200: { description: 'Successfully retrieved user profile.' }
+ *       401: { description: 'Unauthorized, token is missing or invalid.' }
  */
 router.route('/me').get(verifyJWT, userController.getCurrentUser);
 
@@ -39,8 +40,7 @@ router.route('/me').get(verifyJWT, userController.getCurrentUser);
  *             type: object
  *             properties: { name: { type: string, example: 'John Doe Updated' } }
  *     responses:
- *       200:
- *         description: Account updated successfully.
+ *       200: { description: 'Account updated successfully.' }
  */
 router.route('/update-account').patch(verifyJWT, userController.updateAccountDetails);
 
@@ -63,30 +63,18 @@ router.route('/update-account').patch(verifyJWT, userController.updateAccountDet
  *               oldPassword: { type: string, format: password }
  *               newPassword: { type: string, format: password }
  *     responses:
- *       200:
- *         description: Password changed successfully.
- *       401:
- *         description: Invalid old password.
+ *       200: { description: 'Password changed successfully.' }
+ *       401: { description: 'Invalid old password.' }
  */
 router.route('/change-password').post(verifyJWT, userController.changeCurrentPassword);
 
 
-// --- Admin & Manager Routes ---
+// --- ADMIN & MANAGER ROUTES ---
+// All routes under /manage are grouped here.
 const manageRouter = Router();
 manageRouter.use(verifyJWT);
 
-/**
- * @openapi
- * /users/manage:
- *   get:
- *     tags: [User Management (Admin)]
- *     summary: Get all active users
- *     description: (SuperAdmin only) Retrieves a list of all active users in the system.
- *     security: { bearerAuth: [] }
- *     responses:
- *       200: { description: 'A list of users.' }
- */
-manageRouter.route('/').get(checkRole(['SuperAdmin']), userController.getAllUsers);
+// --- MOST SPECIFIC '/manage' ROUTES COME FIRST ---
 
 /**
  * @openapi
@@ -94,8 +82,9 @@ manageRouter.route('/').get(checkRole(['SuperAdmin']), userController.getAllUser
  *   get:
  *     tags: [User Management (Admin)]
  *     summary: Get all users of a specific role
- *     description: (SuperAdmin only) Retrieves a list of ALL users (including pending/inactive) filtered by a specific role. Useful for populating dropdowns.
- *     security: { bearerAuth: [] }
+ *     description: (SuperAdmin only) Retrieves a list of ALL users (including pending/inactive) filtered by a specific role. Useful for populating admin dropdowns.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - { name: role, in: query, required: true, schema: { type: string, example: 'Program Manager' } }
  *     responses:
@@ -110,7 +99,8 @@ manageRouter.route('/list-by-role').get(checkRole(['SuperAdmin']), userControlle
  *     tags: [User Management (Admin)]
  *     summary: Get onboarded users
  *     description: (SuperAdmin & Program Manager) Retrieves a paginated list of users who have logged in at least once.
- *     security: { bearerAuth: [] }
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - { name: limit, in: query, schema: { type: integer, default: 10 } }
  *       - { name: page, in: query, schema: { type: integer, default: 1 } }
@@ -121,12 +111,47 @@ manageRouter.route('/onboarded').get(checkRole(['SuperAdmin', 'Program Manager']
 
 /**
  * @openapi
+ * /users/manage/archived:
+ *   get:
+ *     tags: [User Management (Admin)]
+ *     summary: Get all deactivated (archived) users
+ *     description: (SuperAdmin only) Retrieves a list of all users who have been marked as inactive (`isActive: false`).
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: 'A list of archived users.' }
+ */
+manageRouter.route('/archived').get(checkRole(['SuperAdmin']), userController.getArchivedUsers);
+
+
+// --- LESS SPECIFIC '/manage' ROUTE ---
+
+/**
+ * @openapi
+ * /users/manage:
+ *   get:
+ *     tags: [User Management (Admin)]
+ *     summary: Get all active users
+ *     description: (SuperAdmin only) Retrieves a list of all active users in the system (`isActive: true`).
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: 'A list of active users.' }
+ */
+manageRouter.route('/').get(checkRole(['SuperAdmin']), userController.getAllUsers);
+
+
+// --- GENERIC, PARAMETERIZED '/manage' ROUTES COME LAST ---
+
+/**
+ * @openapi
  * /users/manage/{id}:
  *   get:
  *     tags: [User Management (Admin)]
  *     summary: Get a single user by ID
  *     description: (SuperAdmin only) Retrieves the full details of a single user, including their assigned programs and recent activity feed.
- *     security: { bearerAuth: [] }
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - { name: id, in: path, required: true, schema: { type: string }, description: 'The ID of the user.' }
  *     responses:
@@ -141,8 +166,9 @@ manageRouter.route('/:id').get(checkRole(['SuperAdmin']), userController.getUser
  *   patch:
  *     tags: [User Management (Admin)]
  *     summary: Activate or deactivate a user
- *     description: (SuperAdmin only) Updates a user's `isActive` status. Setting to `false` prevents them from logging in.
- *     security: { bearerAuth: [] }
+ *     description: (SuperAdmin only) Updates a user's `isActive` status. `false` prevents login, `true` re-enables login.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - { name: id, in: path, required: true, schema: { type: string } }
  *     requestBody:
@@ -157,31 +183,34 @@ manageRouter.route('/:id').get(checkRole(['SuperAdmin']), userController.getUser
  */
 manageRouter.route('/:id/status').patch(checkRole(['SuperAdmin']), userController.updateUserStatus);
 
-// /**
-//  * @openapi
-//  * /users/manage/{id}/assign-manager:
-//  *   patch:
-//  *     tags: [User Management (Admin)]
-//  *     summary: Assign a manager to a user
-//  *     description: (SuperAdmin only) Assigns a specific Program Manager to a user (e.g., a Trainee or Facilitator).
-//  *     security: { bearerAuth: [] }
-//  *     parameters:
-//  *       - { name: id, in: path, required: true, schema: { type: string, description: "ID of the user to be managed" } }
-//  *     requestBody:
-//  *       required: true
-//  *       content:
-//  *         application/json:
-//  *           schema:
-//  *             type: object
-//  *             properties:
-//  *               managerId:
-//  *                 type: string
-//  *                 description: "ID of the Program Manager to assign. Send empty string to unassign."
-//  *     responses:
-//  *       200: { description: 'Manager assigned successfully.' }
-//  */
+/**
+ * @openapi
+ * /users/manage/{id}/assign-manager:
+ *   patch:
+ *     tags: [User Management (Admin)]
+ *     summary: Assign a manager to a user
+ *     description: (SuperAdmin only) Assigns a specific Program Manager to another user (e.g., a Trainee or Facilitator).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { name: id, in: path, required: true, schema: { type: string, description: "ID of the user to be managed" } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               managerId:
+ *                 type: string
+ *                 description: "ID of the Program Manager to assign. Send empty string to unassign."
+ *     responses:
+ *       200: { description: 'Manager assigned successfully.' }
+ */
 // manageRouter.route('/:id/assign-manager').patch(checkRole(['SuperAdmin']), userController.assignManagerToUser);
 
+
+// Mount all the management routes under the /manage path
 router.use('/manage', manageRouter);
 
 export default router;

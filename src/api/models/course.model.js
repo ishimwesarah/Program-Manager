@@ -8,8 +8,8 @@ const courseSchema = new mongoose.Schema({
     contentUrl: { type: String, required: true }, // URL to the uploaded document
     status: {
         type: String,
-        enum: ['PendingApproval', 'Approved', 'Rejected'],
-        default: 'PendingApproval'
+        enum: ['Draft', 'PendingApproval', 'Approved', 'Rejected'], 
+        default: 'Draft' 
     }
 }, { timestamps: true });
 

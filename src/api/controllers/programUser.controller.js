@@ -117,6 +117,66 @@ const assignManager = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, program, "Program Manager assigned successfully."));
 });
 
+export const getMyManagedTrainees = asyncHandler(async (req, res) => {
+    const managerId = req.user._id;
+
+    // 1. Find all programs managed by this PM
+    const programs = await Program.find({ programManagers: managerId }).select('_id name description');
+    if (programs.length === 0) {
+        return res.status(200).json(new ApiResponse(200, [], "No trainees found as you are not managing any programs."));
+    }
+    const programIds = programs.map(p => p._id);
+    const programMap = new Map(programs.map(p => [p._id.toString(), p]));
+
+    // 2. Find all unique trainees across those programs
+    const trainees = await User.find({ 
+        _id: { $in: [].concat(...programs.map(p => p.trainees)) } 
+    }).select('name email createdAt status').lean();
+
+    // 3. Fetch all relevant stats in parallel
+    const [allAttendance, allSubmissions] = await Promise.all([
+        Attendance.find({ program: { $in: programIds } }).lean(),
+        Submission.find({ program: { $in: programIds } }).lean()
+    ]);
+
+    // 4. Process the data to build the rich trainee objects for the frontend
+    const richTraineeData = trainees.map(trainee => {
+        const traineeIdStr = trainee._id.toString();
+
+        // Calculate stats for this specific trainee
+        const traineeAttendance = allAttendance.filter(a => a.user.toString() === traineeIdStr);
+        const presentCount = traineeAttendance.filter(a => a.status === 'Present').length;
+        const totalAttendanceRecords = traineeAttendance.length;
+        const attendancePercentage = totalAttendanceRecords > 0 ? Math.round((presentCount / totalAttendanceRecords) * 100) : 0;
+        
+        const traineeSubmissions = allSubmissions.filter(s => s.trainee.toString() === traineeIdStr);
+        const submittedCount = traineeSubmissions.length;
+        // NOTE: For a real app, the total number of assignments would come from the course/program model.
+        // We'll hardcode it for this example.
+        const totalAssignments = 18; 
+        const assignmentsPercentage = totalAssignments > 0 ? Math.round((submittedCount / totalAssignments) * 100) : 0;
+
+        // Find which program this trainee is in (simplified for this example)
+        // A more complex app might show all programs a trainee is in.
+        const programInfo = programMap.get(allAttendance[0]?.program.toString()) || {name: "Multiple Programs", description: ""};
+
+        return {
+            ...trainee,
+            program: {
+                name: programInfo.name,
+                description: programInfo.description
+            },
+            stats: {
+                attendance: attendancePercentage,
+                assignments: assignmentsPercentage,
+                submissionCount: `${submittedCount}/${totalAssignments}`
+            }
+        };
+    });
+
+    return res.status(200).json(new ApiResponse(200, richTraineeData, "Managed trainees fetched successfully."));
+});
+
 
 export {
     getUsersInProgram,
